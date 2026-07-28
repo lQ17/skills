@@ -1,0 +1,17 @@
+{
+  "owner": "burnshall-ui",
+  "slug": "eve-esi",
+  "displayName": "Eve online Esi Skill",
+  "latest": {
+    "version": "1.0.2",
+    "publishedAt": 1770804097302,
+    "commit": "https://github.com/openclaw/skills/commit/65e5676e394c70a8b61914a821d25f99c07ce1b5"
+  },
+  "history": [
+    {
+      "version": "1.0.0",
+      "publishedAt": 1770595175203,
+      "commit": "https://github.com/openclaw/skills/commit/9d5e9b716196bfd921263bcc284c93fea2179fc2"
+    }
+  ]
+}

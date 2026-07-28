@@ -1,0 +1,14 @@
+{
+  "slug": "P5664",
+  "title": "[CSP-S 2019] Emiya 家今天的饭",
+  "difficulty": "DIAMOND",
+  "score": 0,
+  "timeLimit": 1000,
+  "memoryLimit": 128,
+  "tags": [
+    "线性DP",
+    "DP优化",
+    "组合数学"
+  ],
+  "isPublic": true
+}

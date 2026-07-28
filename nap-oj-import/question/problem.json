@@ -1,0 +1,10 @@
+{
+  "slug": "P0000",
+  "title": "题目名称",
+  "difficulty": "IRON",
+  "score": 0,
+  "timeLimit": 1000,
+  "memoryLimit": 128,
+  "tags": [],
+  "isPublic": true
+}
