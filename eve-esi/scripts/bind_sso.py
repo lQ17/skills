@@ -1,4 +1,4 @@
-﻿#!/usr/bin/env python3
+#!/usr/bin/env python3
 """EVE SSO bind helper (PKCE + optional client secret).
 
 Binds a character for local agents:
@@ -23,7 +23,6 @@ import json
 import os
 import secrets
 import socket
-import subprocess
 import sys
 import threading
 import time
@@ -33,44 +32,20 @@ import urllib.request
 import webbrowser
 from pathlib import Path
 
-SSO_AUTHORIZE = "https://login.eveonline.com/v2/oauth/authorize"
-SSO_TOKEN = "https://login.eveonline.com/v2/oauth/token"
-SSO_VERIFY = "https://login.eveonline.com/oauth/verify"
-USER_AGENT = "Grok-EVE-ESI-Bind/1.0 (local agent; contact via local machine)"
-
-# Broad default set so agents can query common personal data without re-auth.
-DEFAULT_SCOPES = [
-    "esi-wallet.read_character_wallet.v1",
-    "esi-assets.read_assets.v1",
-    "esi-skills.read_skills.v1",
-    "esi-skills.read_skillqueue.v1",
-    "esi-clones.read_clones.v1",
-    "esi-clones.read_implants.v1",
-    "esi-location.read_location.v1",
-    "esi-location.read_ship_type.v1",
-    "esi-location.read_online.v1",
-    "esi-characters.read_notifications.v1",
-    "esi-industry.read_character_jobs.v1",
-    "esi-markets.read_character_orders.v1",
-    "esi-contracts.read_character_contracts.v1",
-    "esi-killmails.read_killmails.v1",
-    "esi-planets.manage_planets.v1",
-    "esi-characters.read_fatigue.v1",
-    "esi-mail.read_mail.v1",
-    "esi-characters.read_blueprints.v1",
-    "esi-characters.read_loyalty.v1",
-    "esi-industry.read_character_mining.v1",
-    "esi-fittings.read_fittings.v1",
-    "esi-characters.read_standings.v1",
-]
-
-WALLET_SCOPES = ["esi-wallet.read_character_wallet.v1"]
-
-SCOPE_PRESETS = {
-    "default": DEFAULT_SCOPES,
-    "wallet": WALLET_SCOPES,
-    "full": DEFAULT_SCOPES,
-}
+# Allow importing the shared module next to this file
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+from _common import (  # noqa: E402
+    SSO_AUTHORIZE_URL,
+    SSO_TOKEN_URL,
+    SSO_VERIFY_URL,
+    USER_AGENT,
+    DEFAULT_SCOPES,
+    SCOPE_PRESETS,
+    WALLET_SCOPES,
+    set_windows_user_env,
+    save_creds,
+    cred_path,
+)
 
 
 def pkce_pair() -> tuple[str, str]:
@@ -82,49 +57,6 @@ def pkce_pair() -> tuple[str, str]:
     )
     return verifier, challenge
 
-
-def cred_dir() -> Path:
-    p = Path.home() / ".eve-esi"
-    p.mkdir(parents=True, exist_ok=True)
-    return p
-
-
-def set_windows_user_env(name: str, value: str) -> None:
-    """Persist User env var on Windows; also set process env for this session."""
-    os.environ[name] = value
-    if sys.platform != "win32":
-        return
-    try:
-        import winreg
-        key = winreg.OpenKey(
-            winreg.HKEY_CURRENT_USER,
-            r"Environment",
-            0,
-            winreg.KEY_SET_VALUE,
-        )
-        try:
-            winreg.SetValueEx(key, name, 0, winreg.REG_EXPAND_SZ, value)
-        finally:
-            winreg.CloseKey(key)
-        try:
-            import ctypes
-            HWND_BROADCAST = 0xFFFF
-            WM_SETTINGCHANGE = 0x001A
-            SMTO_ABORTIFHUNG = 0x0002
-            result = ctypes.c_long()
-            ctypes.windll.user32.SendMessageTimeoutW(
-                HWND_BROADCAST,
-                WM_SETTINGCHANGE,
-                0,
-                "Environment",
-                SMTO_ABORTIFHUNG,
-                5000,
-                ctypes.byref(result),
-            )
-        except Exception:
-            pass
-    except Exception as e:
-        print(f"Warning: could not persist env {name}: {e}", file=sys.stderr)
 
 def http_form(url: str, data: dict, headers: dict | None = None) -> dict:
     body = urllib.parse.urlencode(data).encode("utf-8")
@@ -146,7 +78,7 @@ def http_form(url: str, data: dict, headers: dict | None = None) -> dict:
 
 def verify_token(access_token: str) -> dict:
     req = urllib.request.Request(
-        SSO_VERIFY,
+        SSO_VERIFY_URL,
         headers={
             "Authorization": f"Bearer {access_token}",
             "User-Agent": USER_AGENT,
@@ -229,28 +161,6 @@ def port_free(port: int) -> bool:
             return False
 
 
-def save_credentials(payload: dict) -> Path:
-    path = cred_dir() / "credentials.json"
-    path.write_text(json.dumps(payload, indent=2, ensure_ascii=False), encoding="utf-8")
-    # Best-effort restrict on Windows
-    if sys.platform == "win32":
-        try:
-            subprocess.run(
-                [
-                    "icacls",
-                    str(path),
-                    "/inheritance:r",
-                    "/grant:r",
-                    f"{os.environ.get('USERNAME', '')}:(R,W)",
-                ],
-                capture_output=True,
-                check=False,
-            )
-        except Exception:
-            pass
-    return path
-
-
 def main() -> None:
     parser = argparse.ArgumentParser(description="Bind EVE Online character via SSO")
     parser.add_argument("--client-id", required=True, help="EVE application Client ID")
@@ -295,7 +205,7 @@ def main() -> None:
         "code_challenge": challenge,
         "code_challenge_method": "S256",
     }
-    auth_url = SSO_AUTHORIZE + "/?" + urllib.parse.urlencode(params)
+    auth_url = SSO_AUTHORIZE_URL + "/?" + urllib.parse.urlencode(params)
 
     print("=" * 60)
     print("EVE SSO Bind")
@@ -320,7 +230,7 @@ def main() -> None:
         "redirect_uri": redirect_uri,
         "code_verifier": verifier,
     }
-    headers = {}
+    headers: dict[str, str] = {}
     if args.client_secret:
         # Confidential client: Basic auth only (do not also send client_id in body)
         basic = base64.b64encode(
@@ -331,7 +241,7 @@ def main() -> None:
         # Public client (PKCE): client_id in body, no secret
         token_data["client_id"] = args.client_id
 
-    tokens = http_form(SSO_TOKEN, token_data, headers)
+    tokens = http_form(SSO_TOKEN_URL, token_data, headers)
     access = tokens["access_token"]
     refresh = tokens["refresh_token"]
     expires_in = int(tokens.get("expires_in", 1199))
@@ -370,7 +280,7 @@ def main() -> None:
     if args.client_secret:
         payload["client_secret"] = args.client_secret
 
-    path = save_credentials(payload)
+    path = save_creds(payload)
 
     print()
     print("Bind successful.")
@@ -383,11 +293,10 @@ def main() -> None:
     print()
     print("Next: query wallet journal with:")
     print(
-        f'  python ensure_token.py && python esi_query.py --token "%EVE_TOKEN_MAIN%" '
+        f'  python ensure_token.py && python esi_query.py --auto-token '
         f'--endpoint "/characters/{char_id}/wallet/journal/" --pages --pretty'
     )
 
 
 if __name__ == "__main__":
     main()
-
