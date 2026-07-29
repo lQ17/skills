@@ -389,3 +389,27 @@ curl -s -X POST "https://esi.evetech.net/latest/universe/names/" \
   -H "Content-Type: application/json" \
   -d '[587, 638, 11393]'
 ```
+
+## ⚠️ MANDATORY: Always resolve IDs to names — NEVER guess
+
+ESI endpoints return numeric IDs for skills, ships, items, types, locations, corporations, alliances, and many other entities. **You MUST NOT guess or assume what an ID maps to.** Always resolve IDs to their actual names before presenting results to the user.
+
+**Rules:**
+
+1. **Never fabricate a name for an ID.** If an ESI response contains only a numeric ID (e.g. `skill_id: 13278`, `type_id: 587`, `system_id: 30000815`), you must resolve it before telling the user what it is.
+2. **Use the resolution endpoints.** Call `/universe/types/{id}/` for a single type, or `/universe/names/` (POST with an ID array) for bulk resolution. For skills specifically, use `scripts/skills.py --search "<name>"` or the non-JSON `--queue` mode which already resolves names.
+3. **Apply to ALL ID types**, including but not limited to: `skill_id`, `type_id`, `system_id`, `station_id`, `corporation_id`, `alliance_id`, `constellation_id`, `region_id`, `ship_type_id`, `item_id`, `race_id`, `bloodline_id`, `faction_id`.
+4. **If resolution fails** (network error, 404, etc.), display the raw ID and explicitly state that the name could not be resolved — do not substitute a guess.
+
+**Example of what NOT to do:**
+```
+skill_id 13278 → "Caldari Battleship V"  ❌ (guessed wrong!)
+```
+
+**What to do instead:**
+```
+# Resolve via ESI
+curl -s "https://esi.evetech.net/latest/universe/types/13278/" | python -m json.tool
+# → "name": "Archaeology"
+skill_id 13278 → "Archaeology V"  ✅
+```
