@@ -243,6 +243,28 @@ python scripts/industry.py --completed      # Completed jobs only
 python scripts/industry.py --json           # Raw JSON output
 ```
 
+### trade_roi.py — 交易 ROI 快速计算（含销量，默认吉他 Jita）
+
+面向"两边挂单倒卖"模型：`单件利润 = S×(1−SF−ST) − B×(1+BF)`；默认费率 = Maybe Master 当前值
+（BF=1.8% SF=1.8% ST=4.2%），可参数覆盖。输出毛价差 / 单件利润 / ROI / 总利润 /
+近7日日均成交量 / 日利润潜力(件利×量) / 判定，并按日利润潜力排序。
+
+```bash
+python scripts/trade_roi.py "Power Circuit"                 # 按名字（精确/自动II↔2变体）
+python scripts/trade_roi.py berserker                       # 模糊（内置清单前缀/包含）
+python scripts/trade_roi.py --id 25617 3841 2478            # 按 type_id，可多个
+python scripts/trade_roi.py "Power Circuit" --qty 100       # 指定数量算总利润
+python scripts/trade_roi.py --bf 1.8 --sf 1.8 --st 4.2 "A"  # 自定义费率
+python scripts/trade_roi.py --region 10000002 "A"           # 指定区域
+python scripts/trade_roi.py --min-roi 5 -- "A" "B"          # 只看 ROI>=5%
+python scripts/trade_roi.py --sort roi "A" "B"              # 按 ROI 排序
+python scripts/trade_roi.py --json "A"                      # 机器可读输出
+python scripts/trade_roi.py --list                          # 内置常用物品（模糊匹配用）
+```
+
+注意：只使用 ESI 公开接口，无需登录；若盘口倒挂（毛价差为负）说明买价高于卖价，
+标准挂单模型必亏（多为操纵/闪崩盘口），脚本会如实标"亏损"。
+
 ## Public endpoints (no auth)
 
 ```bash
