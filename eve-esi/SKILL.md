@@ -141,6 +141,55 @@ python scripts/ensure_token.py --print-token
 python scripts/ensure_token.py --json
 ```
 
+### Multi-character support
+
+Credentials are stored in a **per-character dictionary** at
+`%USERPROFILE%\.eve-esi\credentials.json`:
+
+```json
+{
+  "primary_character_id": "2124400030",
+  "characters": {
+    "2124400030": { "character_name": "gitignoreXD", "access_token": "...", "refresh_token": "...", "...": "..." },
+    "另一个ID":     { "character_name": "altPilot",   "access_token": "...", "refresh_token": "...", "...": "..." }
+  }
+}
+```
+
+Legacy flat (single-character) files are migrated automatically on first load —
+the old fields are preserved inside a new slot keyed by the character ID.
+
+**Bind additional characters.** Re-running `bind_sso.py` *adds* a character; it
+never deletes previously bound ones. The first bound character (or any run with
+`--primary`) becomes the primary, whose credentials are mirrored into the Windows
+`EVE_*` environment variables so existing dashboard configs (`$ENV:EVE_TOKEN_MAIN`,
+etc.) keep working.
+
+```bash
+# Bind a second character (keeps gitignoreXD intact)
+python scripts/bind_sso.py --client-id YOUR_CLIENT_ID
+
+# Bind and force it to be the primary
+python scripts/bind_sso.py --client-id YOUR_CLIENT_ID --primary
+```
+
+**Select a character per command.** Every script accepts `--char <ID>`; omitting
+it uses the primary.
+
+```bash
+# List all bound characters and token status
+python scripts/ensure_token.py --list
+
+# Refresh + print token for a specific character
+python scripts/ensure_token.py --char 2124400030 --print-token
+
+# Wallet for a specific character
+python scripts/wallet_journal.py --char 另一个ID
+
+# Query any endpoint for a character from the store (no manual token needed)
+python scripts/esi_query.py --char 2124400030 --endpoint "/characters/{char_id}/skills/" --pretty
+```
+
 ## Convenience Scripts
 
 ### wallet_journal.py — Wallet balance and transactions

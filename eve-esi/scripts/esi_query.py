@@ -50,6 +50,11 @@ def main() -> None:
         help="Auto-fetch and refresh token from saved credentials (recommended)",
     )
     parser.add_argument(
+        "--char",
+        default=None,
+        help="Character ID; resolves that character's token from the store",
+    )
+    parser.add_argument(
         "--endpoint",
         required=True,
         help="ESI endpoint path, e.g. /characters/12345/wallet/",
@@ -74,8 +79,8 @@ def main() -> None:
     args = parser.parse_args()
 
     # Validate token source
-    if not args.token and not args.auto_token:
-        parser.error("Either --token or --auto-token is required")
+    if not args.token and not args.auto_token and not args.char:
+        parser.error("One of --token, --auto-token, or --char is required")
 
     # Resolve token
     token = args.token
@@ -86,9 +91,17 @@ def main() -> None:
     if not endpoint.startswith("/"):
         endpoint = "/" + endpoint
 
-    # Determine character ID for auto-token mode (used in endpoint substitution)
+    # Determine character ID and token
     char_id = None
-    if args.auto_token:
+    if args.char:
+        try:
+            creds = ensure_token(char_id=args.char)
+        except TokenError as e:
+            print(f"Token error: {e}", file=sys.stderr)
+            sys.exit(1)
+        token = creds["access_token"]
+        char_id = str(creds.get("character_id") or "")
+    elif args.auto_token:
         try:
             creds = ensure_token()
         except TokenError as e:
@@ -96,9 +109,10 @@ def main() -> None:
             sys.exit(1)
         token = None  # esi_request will use auto_token=True
         char_id = str(creds.get("character_id") or "")
-        # Substitute {char_id} placeholder in endpoint
-        if char_id and "{char_id}" in endpoint:
-            endpoint = endpoint.replace("{char_id}", char_id)
+
+    # Substitute {char_id} placeholder in endpoint
+    if char_id and "{char_id}" in endpoint:
+        endpoint = endpoint.replace("{char_id}", char_id)
 
     try:
         if args.pages and args.method == "GET":

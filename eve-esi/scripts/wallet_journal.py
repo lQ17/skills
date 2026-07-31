@@ -38,6 +38,7 @@ def main() -> None:
         default="balance",
     )
     parser.add_argument("--pages", action="store_true", help="Fetch all journal pages")
+    parser.add_argument("--char", default=None, help="Character ID (default: primary)")
     parser.add_argument("--json", action="store_true", help="Output raw JSON")
     parser.add_argument(
         "--pretty", action="store_true", help="Pretty-print JSON output"
@@ -45,12 +46,13 @@ def main() -> None:
     args = parser.parse_args()
 
     try:
-        data = ensure_token()
+        data = ensure_token(char_id=args.char)
     except TokenError as e:
         print(f"Token error: {e}", file=sys.stderr)
         sys.exit(1)
 
-    token = None  # Use auto_token=True
+    use_auto = args.char is None
+    token = None if use_auto else data.get("access_token")
     char_id = data.get("character_id") or ""
     char_name = data.get("character_name") or "Unknown"
     if not char_id:
@@ -65,26 +67,31 @@ def main() -> None:
     try:
         if args.what in ("balance", "all"):
             bal, _ = esi_request(
-                f"/characters/{char_id}/wallet/", auto_token=True
+                f"/characters/{char_id}/wallet/", token=token, auto_token=use_auto
             )
             results["balance"] = bal
 
         if args.what in ("journal", "all"):
             if args.pages:
                 results["journal"] = esi_request_all_pages(
-                    f"/characters/{char_id}/wallet/journal/", auto_token=True
+                    f"/characters/{char_id}/wallet/journal/",
+                    token=token,
+                    auto_token=use_auto,
                 )
             else:
                 j, _ = esi_request(
                     f"/characters/{char_id}/wallet/journal/",
                     page=1,
-                    auto_token=True,
+                    token=token,
+                    auto_token=use_auto,
                 )
                 results["journal"] = j
 
         if args.what in ("transactions", "all"):
             tx, _ = esi_request(
-                f"/characters/{char_id}/wallet/transactions/", auto_token=True
+                f"/characters/{char_id}/wallet/transactions/",
+                token=token,
+                auto_token=use_auto,
             )
             results["transactions"] = tx
 

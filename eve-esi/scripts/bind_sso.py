@@ -43,7 +43,7 @@ from _common import (  # noqa: E402
     SCOPE_PRESETS,
     WALLET_SCOPES,
     set_windows_user_env,
-    save_creds,
+    add_character,
     cred_path,
 )
 
@@ -180,6 +180,11 @@ def main() -> None:
         action="store_true",
         help="Do not open browser; print URL only",
     )
+    parser.add_argument(
+        "--primary",
+        action="store_true",
+        help="Make this character the primary (mirrors into Windows env vars)",
+    )
     args = parser.parse_args()
 
     if not port_free(args.port):
@@ -251,16 +256,10 @@ def main() -> None:
     char_name = verify.get("CharacterName") or verify.get("name") or ""
     granted = verify.get("Scopes") or verify.get("scp") or ""
 
-    # Persist for any agent
+    # App-level client id is single-valued; always mirror it into the env.
     set_windows_user_env("EVE_CLIENT_ID", args.client_id)
     if args.client_secret:
         set_windows_user_env("EVE_CLIENT_SECRET", args.client_secret)
-    set_windows_user_env("EVE_TOKEN_MAIN", access)
-    set_windows_user_env("EVE_REFRESH_MAIN", refresh)
-    if char_id:
-        set_windows_user_env("EVE_CHAR_ID", char_id)
-    if char_name:
-        set_windows_user_env("EVE_CHAR_NAME", char_name)
 
     expires_at = int(time.time()) + expires_in - 30
     payload = {
@@ -280,20 +279,27 @@ def main() -> None:
     if args.client_secret:
         payload["client_secret"] = args.client_secret
 
-    path = save_creds(payload)
+    # Write into the multi-character store (does NOT delete other characters)
+    store = add_character(payload, set_primary=args.primary)
+    is_primary = store["primary_character_id"] == char_id
 
     print()
     print("Bind successful.")
-    print(f"  Character : {char_name} ({char_id})")
-    print(f"  Cred file : {path}")
-    print("  User env  : EVE_CLIENT_ID, EVE_TOKEN_MAIN, EVE_REFRESH_MAIN, EVE_CHAR_ID")
+    print(f"  Character : {char_name} ({char_id})" + ("  [PRIMARY]" if is_primary else ""))
+    print(f"  Cred file : {cred_path()}")
+    print(f"  Bound characters ({len(store['characters'])}):")
+    for cid, c in store["characters"].items():
+        mark = " <- primary" if cid == store["primary_character_id"] else ""
+        print(f"    - {c.get('character_name', '?')} ({cid}){mark}")
     print()
     print("Note: already-open terminals/agents may not see new User env vars")
     print("until restarted. This process and the credentials file work immediately.")
     print()
-    print("Next: query wallet journal with:")
+    print("Next: list characters with:")
+    print("  python ensure_token.py --list")
+    print("Or query this character with:")
     print(
-        f'  python ensure_token.py && python esi_query.py --auto-token '
+        f'  python esi_query.py --auto-token --char {char_id} '
         f'--endpoint "/characters/{char_id}/wallet/journal/" --pages --pretty'
     )
 

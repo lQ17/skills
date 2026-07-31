@@ -213,6 +213,130 @@ def save_creds(data: dict) -> None:
 
 
 # ---------------------------------------------------------------------------
+# Multi-character credential store
+# ---------------------------------------------------------------------------
+#
+# Layout of ~/.eve-esi/credentials.json:
+#   {
+#     "primary_character_id": "2124400030",
+#     "characters": {
+#       "<character_id>": { client_id, character_id, character_name, scopes,
+#                          access_token, refresh_token, expires_at, ... },
+#       ...
+#     }
+#   }
+# Legacy flat (single-character) files are migrated automatically on load.
+
+def load_store() -> dict:
+    """Load the multi-character store, migrating legacy flat format if needed."""
+    path = cred_path()
+    if not path.exists():
+        return {"primary_character_id": None, "characters": {}}
+    try:
+        data = json.loads(path.read_text(encoding="utf-8"))
+    except Exception:
+        return {"primary_character_id": None, "characters": {}}
+
+    if not isinstance(data.get("characters"), dict):
+        chars: dict[str, dict] = {}
+        cid = data.get("character_id")
+        if cid is not None:
+            cid_str = str(cid)
+            slot = dict(data)
+            slot["character_id"] = cid
+            chars[cid_str] = slot
+        data = {
+            "primary_character_id": cid_str if cid is not None else None,
+            "characters": chars,
+        }
+
+    data.setdefault("characters", {})
+    if not data.get("primary_character_id") and data["characters"]:
+        data["primary_character_id"] = next(iter(data["characters"]))
+    return data
+
+
+def save_store(data: dict) -> Path:
+    """Persist the multi-character store and tighten file ACLs on Windows."""
+    path = cred_path()
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(json.dumps(data, indent=2, ensure_ascii=False), encoding="utf-8")
+    if sys.platform == "win32":
+        try:
+            subprocess.run(
+                [
+                    "icacls",
+                    str(path),
+                    "/inheritance:r",
+                    "/grant:r",
+                    f"{os.environ.get('USERNAME', '')}:(R,W)",
+                ],
+                capture_output=True,
+                check=False,
+            )
+        except Exception:
+            pass
+    return path
+
+
+def get_char(store: dict, char_id=None):
+    """Resolve (character_id_str, slot_dict) for a given id or the primary."""
+    chars = store.get("characters", {})
+    if not chars:
+        return None, None
+    cid = char_id or store.get("primary_character_id") or next(iter(chars))
+    cid = str(cid)
+    return cid, chars.get(cid)
+
+
+def sync_env_for_char(char_slot: dict) -> None:
+    """Mirror a character's credentials into the single-value Windows env slots.
+
+    Keeps the existing dashboard config ($ENV:EVE_TOKEN_MAIN etc.) working for
+    the active/primary character.
+    """
+    if not char_slot:
+        return
+    if char_slot.get("client_id"):
+        set_windows_user_env("EVE_CLIENT_ID", str(char_slot["client_id"]))
+    if char_slot.get("client_secret"):
+        set_windows_user_env("EVE_CLIENT_SECRET", str(char_slot["client_secret"]))
+    if char_slot.get("access_token"):
+        set_windows_user_env("EVE_TOKEN_MAIN", str(char_slot["access_token"]))
+    if char_slot.get("refresh_token"):
+        set_windows_user_env("EVE_REFRESH_MAIN", str(char_slot["refresh_token"]))
+    if char_slot.get("character_id"):
+        set_windows_user_env("EVE_CHAR_ID", str(char_slot["character_id"]))
+    if char_slot.get("character_name"):
+        set_windows_user_env("EVE_CHAR_NAME", str(char_slot["character_name"]))
+
+
+def add_character(payload: dict, set_primary: bool = False) -> dict:
+    """Insert/update a character slot in the store. Returns the updated store.
+
+    Does NOT delete other characters. Sets the character as primary when
+    *set_primary* is True or when no primary exists yet, and mirrors the
+    primary's credentials into the Windows env slots.
+    """
+    store = load_store()
+    cid = str(payload.get("character_id") or "")
+    if not cid:
+        raise TokenError("payload missing character_id")
+    store["characters"][cid] = payload
+    if set_primary or not store.get("primary_character_id"):
+        store["primary_character_id"] = cid
+    save_store(store)
+    if store["primary_character_id"] == cid:
+        sync_env_for_char(payload)
+    return store
+
+
+def list_characters() -> dict:
+    """Return the full store (callers format/print as needed)."""
+    return load_store()
+
+
+# ---------------------------------------------------------------------------
 # Token management
 # ---------------------------------------------------------------------------
 
@@ -255,28 +379,39 @@ def _refresh_token(data: dict) -> dict:
         data["refresh_token"] = tokens["refresh_token"]
     data["expires_at"] = int(time.time()) + int(tokens.get("expires_in", 1199)) - 30
     data["updated_at"] = int(time.time())
-    save_creds(data)
     return data
 
 
-def ensure_token(force: bool = False) -> dict:
-    """Ensure a valid access token exists. Refreshes if needed.
+def ensure_token(char_id: str | None = None, force: bool = False) -> dict:
+    """Ensure a valid access token exists for a character. Refreshes if needed.
 
-    Returns the full credentials dict with a guaranteed-valid ``access_token``.
+    *char_id* selects the character (defaults to the store's primary, then the
+    first bound character). Returns that character's credentials dict with a
+    guaranteed-valid ``access_token`` — compatible with callers that read
+    ``character_id`` / ``access_token`` from the result.
+
     Raises TokenError if no credentials are found or refresh fails.
     """
-    data = load_creds()
-    if not data.get("refresh_token") and not data.get("access_token"):
+    store = load_store()
+    cid, slot = get_char(store, char_id)
+    if slot is None:
         raise TokenError("No credentials found. Run bind_sso.py first.")
-    expires_at = int(data.get("expires_at") or 0)
-    if force or not data.get("access_token") or time.time() >= expires_at:
-        data = _refresh_token(data)
+    if not slot.get("refresh_token") and not slot.get("access_token"):
+        raise TokenError("No credentials for this character. Run bind_sso.py.")
+    expires_at = int(slot.get("expires_at") or 0)
+    is_primary = cid == store.get("primary_character_id")
+    if force or not slot.get("access_token") or time.time() >= expires_at:
+        slot = _refresh_token(slot)
+        store["characters"][cid] = slot
+        save_store(store)
+        if is_primary:
+            sync_env_for_char(slot)
     else:
-        # Keep env in sync for this process
-        os.environ["EVE_TOKEN_MAIN"] = str(data["access_token"])
-        if data.get("character_id"):
-            os.environ["EVE_CHAR_ID"] = str(data["character_id"])
-    return data
+        # Keep process env in sync for this character
+        os.environ["EVE_TOKEN_MAIN"] = str(slot["access_token"])
+        if slot.get("character_id"):
+            os.environ["EVE_CHAR_ID"] = str(slot["character_id"])
+    return slot
 
 
 # ---------------------------------------------------------------------------
