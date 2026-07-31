@@ -265,6 +265,32 @@ python scripts/trade_roi.py --list                          # 内置常用物品
 注意：只使用 ESI 公开接口，无需登录；若盘口倒挂（毛价差为负）说明买价高于卖价，
 标准挂单模型必亏（多为操纵/闪崩盘口），脚本会如实标"亏损"。
 
+### jita_top200.py — Jita 日均成交量 Top-N 全流程（增量缓存）
+
+扫全吉他挂单簿 → 取高流动性候选 → 拉历史成交量 → 排 Top-N，输出列：
+排名,物品,中文名,type_id,7日均成交量(件),最近日成交量(件),当前最高买价,当前最低卖价,
+毛价差%,单件利润,ROI%,7日平均ROI%,30日平均ROI%,判定（判定按 7日平均ROI：≥5 好 / ≥3 可做 / >0 勉强 / ≤0 亏）。
+
+**增量缓存**（目录 `~/.eve-esi/cache/`，避免全量请求）：
+- `orderbook.json`：全挂单簿聚合，默认 12h 内复用，超时才重扫（约 400 页，多线程）
+- `history.json`：近 40 天日成交，按"最新日期 ≥ 前天"判断新鲜（ESI 历史滞后约 2 天），
+  且记录每次抓取时间，数据未更新时不反复重抓；失败可断点续跑
+- 中文名：优先读本地化表 `D:/eve中英文对照/eve_localization.json`（en→zh，无需 API），
+  不存在则中文名列留空（可 `--no-zh` 跳过加载）
+
+```bash
+python scripts/jita_top200.py                                  # 全流程（缓存优先）
+python scripts/jita_top200.py --fresh                          # 强制重扫+重抓
+python scripts/jita_top200.py --ob-hours 6 --hist-hours 6     # 自定义缓存新鲜度
+python scripts/jita_top200.py --top 100 --sort roi30           # 榜单位数/排序(roi7|roi30|volume)
+python scripts/jita_top200.py --csv "路径/Jita-Top200.csv"     # 输出路径
+python scripts/jita_top200.py --no-zh --json                   # 不带中文名 / 机器可读
+python scripts/jita_top200.py --cache D:/my/cache              # 自定义缓存目录
+```
+
+注意：写 CSV 时若目标文件正被 Excel/WPS 打开会报 PermissionError——先关文件再更新。
+更新频率建议：每天跑一次即可（挂单簿/历史走缓存，仅增量补抓）。
+
 ## Public endpoints (no auth)
 
 ```bash
