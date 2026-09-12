@@ -133,6 +133,12 @@ node <skill-dir>/parse_blocks.js extracted/project.json extracted/blocks_output.
 
 如遇到未映射的 opcode，在 `parse_blocks.js` 的 `OPCODE_CN` 对象中添加中文映射。
 
+### 英文枚举值映射
+
+部分积木的 `fields` 存的是英文枚举值（图层 `front`/`back`、特效 `color`/`pixelate`、停止选项 `all`/`this script`、拖动模式 `draggable` 等），
+已内置映射表 `FRONT_BACK_CN`、`FORWARD_BACKWARD_CN`、`EFFECT_CN`、`STOP_CN`、`DRAG_CN`，统一经 `cn(map, value, fallback)` 调用，避免英文漏进中文输出。
+遇到新的枚举值时补进对应映射表即可；未命中时 `cn()` 原样回退，不会报错。
+
 ### 安全机制
 
 - **循环引用检测**：`resolveReporter` 和 `renderChain` 均有 visited Set 防止无限递归

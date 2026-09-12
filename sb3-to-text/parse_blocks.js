@@ -122,6 +122,25 @@ const OPCODE_CN = {
   pen_changepensizeby: '画笔大小增加',
 };
 
+// Translate enum field values that would otherwise leak raw English into the output
+const FRONT_BACK_CN = { 'front': '前面', 'back': '后面' };
+const FORWARD_BACKWARD_CN = { 'forward': '前移', 'backward': '后移' };
+const STOP_CN = {
+  'all': '全部', 'this script': '这个脚本',
+  'other scripts in sprite': '角色的其他脚本', 'other scripts in stage': '舞台的其他脚本',
+};
+const DRAG_CN = { 'draggable': '可拖动', 'not draggable': '不可拖动' };
+const EFFECT_CN = {
+  'color': '颜色', 'fisheye': '鱼眼', 'whirl': '旋涡', 'pixelate': '像素化',
+  'mosaic': '马赛克', 'brightness': '亮度', 'ghost': '虚像',
+};
+
+// cn(map, value, default): translate a Scratch enum value to Chinese, falling back safely
+function cn(map, value, fallback) {
+  if (value === undefined || value === null || value === '') return fallback;
+  return map[String(value)] || String(value);
+}
+
 // Resolve an input (which can be literal array or block reference) to readable text
 function resolveInput(blocks, input, _visited) {
   if (!input) return '?';
@@ -314,24 +333,24 @@ function formatBlock(blocks, blockId) {
   if (op === 'looks_think') return `思考 ${ri(inputs.MESSAGE)}`;
   if (op === 'looks_changesizeby') return `大小增加 ${ri(inputs.CHANGE)}`;
   if (op === 'looks_setsizeto') return `大小设为 ${ri(inputs.SIZE)}`;
-  if (op === 'looks_changeeffectby') return `${fields.EFFECT ? fields.EFFECT[0] : '特效'} 增加 ${ri(inputs.CHANGE)}`;
-  if (op === 'looks_seteffectto') return `${fields.EFFECT ? fields.EFFECT[0] : '特效'} 设为 ${ri(inputs.VALUE)}`;
+  if (op === 'looks_changeeffectby') return `${cn(EFFECT_CN, fields.EFFECT && fields.EFFECT[0], '特效')} 增加 ${ri(inputs.CHANGE)}`;
+  if (op === 'looks_seteffectto') return `${cn(EFFECT_CN, fields.EFFECT && fields.EFFECT[0], '特效')} 设为 ${ri(inputs.VALUE)}`;
   if (op === 'looks_cleargraphiceffects') return '清除图形特效';
-  if (op === 'looks_gotofrontback') return `移到最${fields.FRONT_BACK ? fields.FRONT_BACK[0] : '?'}层`;
-  if (op === 'looks_goforwardbackwardlayers') return `${fields.FORWARD_BACKWARD ? fields.FORWARD_BACKWARD[0] : '前移'} ${ri(inputs.NUM)} 层`;
+  if (op === 'looks_gotofrontback') return `移到最${cn(FRONT_BACK_CN, fields.FRONT_BACK && fields.FRONT_BACK[0], '?')}`;
+  if (op === 'looks_goforwardbackwardlayers') return `${cn(FORWARD_BACKWARD_CN, fields.FORWARD_BACKWARD && fields.FORWARD_BACKWARD[0], '前移')} ${ri(inputs.NUM)} 层`;
 
   if (op === 'sound_play') return `播放声音 ${ri(inputs.SOUND_MENU)}`;
   if (op === 'sound_playuntildone') return `播放声音 ${ri(inputs.SOUND_MENU)} 直到播完`;
   if (op === 'sound_stopallsounds') return '停止所有声音';
-  if (op === 'sound_seteffectto') return `音效 ${fields.EFFECT ? fields.EFFECT[0] : ''} 设为 ${ri(inputs.VALUE)}`;
-  if (op === 'sound_changeeffectby') return `音效 ${fields.EFFECT ? fields.EFFECT[0] : ''} 增加 ${ri(inputs.VALUE)}`;
+  if (op === 'sound_seteffectto') return `音效 ${cn(EFFECT_CN, fields.EFFECT && fields.EFFECT[0], '')} 设为 ${ri(inputs.VALUE)}`;
+  if (op === 'sound_changeeffectby') return `音效 ${cn(EFFECT_CN, fields.EFFECT && fields.EFFECT[0], '')} 增加 ${ri(inputs.VALUE)}`;
   if (op === 'sound_cleareffects') return '清除音效';
   if (op === 'sound_setvolumeto') return `音量设为 ${ri(inputs.VOLUME)}`;
   if (op === 'sound_changevolumeby') return `音量增加 ${ri(inputs.VOLUME)}`;
 
   if (op === 'control_wait') return `等待 ${ri(inputs.DURATION)} 秒`;
   if (op === 'control_wait_until') return `等待直到 ${ri(inputs.CONDITION)}`;
-  if (op === 'control_stop') return `停止 [${fields.STOP_OPTION ? fields.STOP_OPTION[0] : '全部'}]`;
+  if (op === 'control_stop') return `停止 [${cn(STOP_CN, fields.STOP_OPTION && fields.STOP_OPTION[0], '全部')}]`;
   if (op === 'control_create_clone_of') return `克隆 ${ri(inputs.CLONE_OPTION)}`;
   if (op === 'control_start_as_clone') return '当作为克隆体启动时';
   if (op === 'control_delete_this_clone') return '删除此克隆体';
@@ -355,7 +374,7 @@ function formatBlock(blocks, blockId) {
   if (op === 'sensing_coloristouchingcolor') return `颜色 ${ri(inputs.COLOR)} 碰到颜色 ${ri(inputs.COLOR2)}`;
   if (op === 'sensing_distanceto') return `到 ${ri(inputs.DISTANCETOMENU)} 的距离`;
   if (op === 'sensing_askandwait') return `询问 ${ri(inputs.QUESTION)} 并等待`;
-  if (op === 'sensing_setdragmode') return `拖动模式设为 [${fields.DRAG_MODE ? fields.DRAG_MODE[0] : '?'}]`;
+  if (op === 'sensing_setdragmode') return `拖动模式设为 [${cn(DRAG_CN, fields.DRAG_MODE && fields.DRAG_MODE[0], '?')}]`;
   if (op === 'sensing_resettimer') return '计时器归零';
 
   if (op === 'pen_clear') return '清除所有画笔';
@@ -426,7 +445,7 @@ function renderChain(blocks, startId, depth, output, _chainVisited) {
       if (inputs.SUBSTACK && inputs.SUBSTACK[1]) {
         renderChain(blocks, inputs.SUBSTACK[1], depth + 1, output, new Set(_chainVisited));
       }
-      output.push(`${indent}结束 重复`);
+      output.push(`${indent}结束 重复执行`);
     } else if (op === 'control_if') {
       const cond = ri(inputs.CONDITION);
       output.push(`${indent}如果 ${cond} 那么:`);
